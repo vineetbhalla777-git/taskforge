@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Python tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# C++
+cpp/build/
+build/
+*.o
+*.a
+*.so
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Node / Angular
+node_modules/
+dist/
+.angular/
+.nx/
+
+# Logs
+*.log
+logs/
+
+# Coverage
+.coverage
+htmlcov/
+
+# Docker
+*.pid
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets
+.env.*
+!.env.example
+
+# ML model artifacts
+*.pt
+*.pth
+*.ckpt
+*.onnx
+Testing/Temporary/

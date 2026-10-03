@@ -1,0 +1,231 @@
+{
+  "title": "TaskForge",
+  "uid": "taskforge-overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "refresh": "5s",
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {
+          "text": "Prometheus",
+          "value": "Prometheus"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Jobs by status (current)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "taskforge_jobs_by_status{status=\"queued\"}",
+          "legendFormat": "queued",
+          "refId": "A"
+        },
+        {
+          "expr": "taskforge_jobs_by_status{status=\"running\"}",
+          "legendFormat": "running",
+          "refId": "B"
+        },
+        {
+          "expr": "taskforge_jobs_by_status{status=\"retrying\"}",
+          "legendFormat": "retrying",
+          "refId": "C"
+        },
+        {
+          "expr": "taskforge_jobs_by_status{status=\"succeeded\"}",
+          "legendFormat": "succeeded",
+          "refId": "D"
+        },
+        {
+          "expr": "taskforge_jobs_by_status{status=\"dead\"}",
+          "legendFormat": "dead",
+          "refId": "E"
+        },
+        {
+          "expr": "taskforge_jobs_by_status{status=\"cancelled\"}",
+          "legendFormat": "cancelled",
+          "refId": "F"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Throughput (jobs/sec)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(taskforge_jobs_succeeded_total[1m]))",
+          "legendFormat": "succeeded/s",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(taskforge_jobs_failed_total[1m]))",
+          "legendFormat": "failed attempts/s",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(taskforge_jobs_retried_total[1m]))",
+          "legendFormat": "retried/s",
+          "refId": "C"
+        },
+        {
+          "expr": "sum(rate(taskforge_jobs_dead_total[1m]))",
+          "legendFormat": "dead-lettered/s",
+          "refId": "D"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Worker pool utilisation",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(taskforge_pool_active)",
+          "legendFormat": "active",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(taskforge_pool_queued)",
+          "legendFormat": "queued locally",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(taskforge_pool_threads)",
+          "legendFormat": "total threads",
+          "refId": "C"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 4,
+      "title": "Leases reaped (crash recovery)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(taskforge_leases_reaped_total[5m]))",
+          "legendFormat": "reaped/s",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 5,
+      "title": "API request rate by status",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(taskforge_api_requests_total[1m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 6,
+      "title": "Jobs submitted by task type",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (task_type) (rate(taskforge_api_jobs_submitted_total[5m]))",
+          "legendFormat": "{{task_type}}",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "id": 7,
+      "title": "Claim errors",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(taskforge_claim_errors_total[5m]))",
+          "legendFormat": "errors/s",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    }
+  ]
+}

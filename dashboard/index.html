@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TaskForge — dispatch board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #101614;
+    --panel: #161e1c;
+    --panel-2: #1c2523;
+    --line: #29332f;
+    --line-soft: #202b28;
+    --ink: #e7ede9;
+    --ink-dim: #8fa39a;
+    --ink-faint: #5c7168;
+    --queued: #7c93a8;
+    --running: #e8a33d;
+    --retrying: #e2622a;
+    --succeeded: #4fa878;
+    --dead: #d1453a;
+    --cancelled: #6b7a76;
+    --sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  a{color:inherit}
+  ::selection{background:#2c433a}
+
+  .wrap{max-width:1180px; margin:0 auto; padding:28px 24px 64px}
+
+  header.top{
+    display:flex; align-items:baseline; justify-content:space-between; gap:16px;
+    padding-bottom:18px; border-bottom:1px solid var(--line);
+  }
+  .brand{display:flex; align-items:baseline; gap:12px}
+  .brand h1{font-size:20px; margin:0; font-weight:600; letter-spacing:.01em}
+  .brand .sub{color:var(--ink-dim); font-size:13px}
+  .status-line{display:flex; align-items:center; gap:10px; font-family:var(--mono); font-size:12px; color:var(--ink-dim)}
+  .dot{width:7px; height:7px; border-radius:50%; background:var(--succeeded); display:inline-block}
+  .dot.live{animation:pulse 2s ease-in-out infinite}
+  .dot.down{background:var(--dead)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+  .board{
+    display:grid; grid-template-columns:repeat(6,1fr); gap:1px;
+    background:var(--line); border:1px solid var(--line); margin:22px 0 26px; border-radius:3px; overflow:hidden;
+  }
+  .cell{background:var(--panel); padding:16px 18px}
+  .cell .n{font-family:var(--mono); font-size:32px; font-weight:600; line-height:1; font-variant-numeric:tabular-nums}
+  .cell .l{margin-top:8px; font-size:12px; color:var(--ink-dim)}
+  .cell.queued .n{color:var(--queued)} .cell.running .n{color:var(--running)}
+  .cell.retrying .n{color:var(--retrying)} .cell.succeeded .n{color:var(--succeeded)}
+  .cell.dead .n{color:var(--dead)} .cell.cancelled .n{color:var(--cancelled)}
+
+  .toolbar{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:14px}
+  select, input[type=text], input[type=password]{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--ink); border-radius:3px;
+    padding:8px 10px; font-family:var(--sans); font-size:13px; outline:none;
+  }
+  select:focus, input:focus{border-color:var(--ink-faint)}
+  input[type=text]{min-width:220px}
+  .spacer{flex:1}
+  .keyfield{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink-dim)}
+  .keyfield input{width:160px; font-family:var(--mono)}
+  button{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--ink); border-radius:3px;
+    padding:8px 12px; font-family:var(--sans); font-size:13px; cursor:pointer;
+  }
+  button:hover{border-color:var(--ink-faint)}
+  button.primary{background:#213a2f; border-color:#2f5744; color:#bfe8cf}
+
+  table.jobs{width:100%; border-collapse:collapse; font-size:13px}
+  table.jobs thead th{
+    text-align:left; font-weight:500; color:var(--ink-faint); font-size:11px;
+    padding:8px 10px; border-bottom:1px solid var(--line);
+  }
+  table.jobs tbody tr{border-bottom:1px solid var(--line-soft); cursor:pointer}
+  table.jobs tbody tr:hover{background:var(--panel-2)}
+  table.jobs td{padding:9px 10px; vertical-align:middle}
+  td.id, td.ts, td.pri{font-family:var(--mono); color:var(--ink-dim)}
+  td.status{white-space:nowrap}
+  .st{display:inline-flex; align-items:center; gap:7px}
+  .st .dot{width:6px; height:6px}
+  .st.queued .dot{background:var(--queued)} .st.running .dot{background:var(--running)}
+  .st.retrying .dot{background:var(--retrying)} .st.succeeded .dot{background:var(--succeeded)}
+  .st.dead .dot{background:var(--dead)} .st.cancelled .dot{background:var(--cancelled)}
+  .empty{padding:40px 10px; text-align:center; color:var(--ink-faint); font-size:13px}
+
+  section.panel{margin-top:30px}
+  section.panel h2{font-size:14px; font-weight:600; margin:0 0 12px; display:flex; align-items:center; justify-content:space-between}
+  section.panel h2 .count{color:var(--ink-dim); font-weight:400; font-family:var(--mono); font-size:12px}
+
+  .dl-row{
+    display:flex; gap:14px; align-items:flex-start; padding:12px 14px; margin-bottom:8px;
+    background:var(--panel); border-left:3px solid var(--dead); border-radius:0 3px 3px 0;
+  }
+  .dl-row .meta{flex:1; min-width:0}
+  .dl-row .id{font-family:var(--mono); font-size:12px; color:var(--ink-dim)}
+  .dl-row .type{font-weight:500; margin:2px 0}
+  .dl-row .err{font-family:var(--mono); font-size:12px; color:#e08b83; overflow-wrap:anywhere}
+
+  /* slide-over */
+  .veil{position:fixed; inset:0; background:rgba(0,0,0,.5); opacity:0; pointer-events:none; transition:opacity .15s}
+  .veil.open{opacity:1; pointer-events:auto}
+  .drawer{
+    position:fixed; top:0; right:0; height:100%; width:min(480px,100%); background:var(--panel);
+    border-left:1px solid var(--line); transform:translateX(100%); transition:transform .18s ease;
+    display:flex; flex-direction:column; padding-top:env(safe-area-inset-top,0px);
+  }
+  .drawer.open{transform:translateX(0)}
+  .drawer .dh{padding:18px 20px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:flex-start}
+  .drawer .dh h3{margin:0 0 4px; font-size:15px; font-family:var(--mono)}
+  .drawer .dh .x{background:none; border:none; color:var(--ink-dim); font-size:20px; cursor:pointer; line-height:1}
+  .drawer .body{padding:16px 20px; overflow-y:auto; flex:1}
+  .kv{display:grid; grid-template-columns:100px 1fr; gap:6px 10px; font-size:12px; margin-bottom:18px}
+  .kv .k{color:var(--ink-faint)} .kv .v{font-family:var(--mono); overflow-wrap:anywhere}
+  .drawer h4{font-size:12px; color:var(--ink-dim); font-weight:500; margin:18px 0 8px; text-transform:none}
+  .log{background:#0b0f0e; border:1px solid var(--line); border-radius:3px; padding:10px; font-family:var(--mono); font-size:12px; max-height:220px; overflow-y:auto}
+  .log .line{padding:2px 0; color:var(--ink-dim)}
+  .log .line.error{color:#e08b83}
+  .log .line.warn{color:var(--running)}
+  pre.result{background:#0b0f0e; border:1px solid var(--line); border-radius:3px; padding:10px; font-family:var(--mono); font-size:12px; overflow-x:auto; white-space:pre-wrap; word-break:break-word}
+  .attempt-row{display:flex; justify-content:space-between; font-size:12px; padding:6px 0; border-bottom:1px solid var(--line-soft)}
+  .attempt-row .a-worker{color:var(--ink-dim); font-family:var(--mono)}
+
+  @media (max-width:720px){
+    .board{grid-template-columns:repeat(3,1fr)}
+    table.jobs thead{display:none}
+    table.jobs, table.jobs tbody, table.jobs tr, table.jobs td{display:block; width:100%}
+    table.jobs tr{padding:10px; border-bottom:1px solid var(--line)}
+    table.jobs td{padding:2px 0}
+  }
+  @media (prefers-reduced-motion: reduce){ .dot.live{animation:none} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1>TaskForge</h1>
+      <span class="sub">job queue dispatch</span>
+    </div>
+    <div class="status-line">
+      <span class="dot live" id="live-dot"></span>
+      <span id="status-text">connecting…</span>
+    </div>
+  </header>
+
+  <div class="board" id="board">
+    <div class="cell queued"><div class="n">–</div><div class="l">queued</div></div>
+    <div class="cell running"><div class="n">–</div><div class="l">running</div></div>
+    <div class="cell retrying"><div class="n">–</div><div class="l">retrying</div></div>
+    <div class="cell succeeded"><div class="n">–</div><div class="l">succeeded</div></div>
+    <div class="cell dead"><div class="n">–</div><div class="l">dead letter</div></div>
+    <div class="cell cancelled"><div class="n">–</div><div class="l">cancelled</div></div>
+  </div>
+
+  <div class="toolbar">
+    <select id="f-status">
+      <option value="">all statuses</option>
+      <option value="queued">queued</option>
+      <option value="running">running</option>
+      <option value="retrying">retrying</option>
+      <option value="succeeded">succeeded</option>
+      <option value="dead">dead</option>
+      <option value="cancelled">cancelled</option>
+    </select>
+    <select id="f-type">
+      <option value="">all task types</option>
+    </select>
+    <input type="text" id="f-id" placeholder="filter by job id…">
+    <div class="spacer"></div>
+    <div class="keyfield">
+      <label for="api-key">API key</label>
+      <input type="password" id="api-key" placeholder="X-API-Key">
+    </div>
+    <div class="keyfield">
+      <label for="api-base">API</label>
+      <input type="text" id="api-base" style="width:220px">
+    </div>
+  </div>
+
+  <table class="jobs">
+    <thead>
+      <tr><th>status</th><th>job</th><th>task type</th><th>pri</th><th>attempt</th><th>created</th></tr>
+    </thead>
+    <tbody id="job-rows"></tbody>
+  </table>
+  <div class="empty" id="empty-msg" style="display:none">no jobs match this filter</div>
+
+  <section class="panel">
+    <h2>Dead letters <span class="count" id="dl-count">0</span></h2>
+    <div id="dl-list"></div>
+  </section>
+</div>
+
+<div class="veil" id="veil"></div>
+<div class="drawer" id="drawer">
+  <div class="dh">
+    <div>
+      <h3 id="d-id">—</h3>
+      <span class="st" id="d-status"><span class="dot"></span><span></span></span>
+    </div>
+    <button class="x" id="d-close" aria-label="close">×</button>
+  </div>
+  <div class="body">
+    <div class="kv" id="d-kv"></div>
+    <h4>Result / error</h4>
+    <pre class="result" id="d-result">—</pre>
+    <h4>Attempt history</h4>
+    <div id="d-attempts"></div>
+    <h4>Logs</h4>
+    <div class="log" id="d-logs"></div>
+    <div id="d-actions" style="margin-top:16px; display:flex; gap:8px"></div>
+  </div>
+</div>
+
+<script>
+const STATUSES = ["queued","running","retrying","succeeded","dead","cancelled"];
+const $ = (s) => document.querySelector(s);
+
+function defaultApiBase(){
+  // Same origin by default (this file is typically served by the API itself, or
+  // by nginx proxying /v1 to it in docker-compose); overridable for local dev.
+  return localStorage.getItem('tf_api_base') || (location.origin.includes('null') ? 'http://localhost:8000' : location.origin);
+}
+
+const state = {
+  apiBase: defaultApiBase(),
+  apiKey: localStorage.getItem('tf_api_key') || '',
+  jobs: [],
+  taskTypes: new Set(),
+};
+
+$('#api-base').value = state.apiBase;
+$('#api-key').value = state.apiKey;
+$('#api-base').addEventListener('change', e => { state.apiBase = e.target.value.replace(/\/$/, ''); localStorage.setItem('tf_api_base', state.apiBase); refreshAll(); });
+$('#api-key').addEventListener('change', e => { state.apiKey = e.target.value; localStorage.setItem('tf_api_key', state.apiKey); refreshAll(); });
+
+async function api(path, opts={}) {
+  const res = await fetch(state.apiBase + path, {
+    ...opts,
+    headers: { 'X-API-Key': state.apiKey, 'Content-Type': 'application/json', ...(opts.headers||{}) },
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { detail = (await res.json()).detail ?? detail; } catch (_) {}
+    throw new Error(`${res.status}: ${JSON.stringify(detail)}`);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+function setLive(ok, msg) {
+  $('#live-dot').classList.toggle('down', !ok);
+  $('#live-dot').classList.toggle('live', ok);
+  $('#status-text').textContent = msg;
+}
+
+function fmtTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
+function shortId(id) { return id ? id.slice(0, 8) : '—'; }
+
+async function refreshStats() {
+  const s = await api('/v1/stats');
+  for (const st of STATUSES) {
+    const cell = document.querySelector(`.cell.${st} .n`);
+    if (cell) cell.textContent = s.by_status[st] ?? 0;
+  }
+}
+
+async function refreshJobs() {
+  const params = new URLSearchParams({ limit: '100' });
+  const status = $('#f-status').value; if (status) params.set('status', status);
+  const type = $('#f-type').value; if (type) params.set('task_type', type);
+  const data = await api('/v1/jobs?' + params.toString());
+  state.jobs = data.items;
+  for (const j of state.jobs) state.taskTypes.add(j.task_type);
+  renderTypeOptions();
+  renderRows();
+}
+
+async function refreshDeadLetters() {
+  const rows = await api('/v1/dead-letters?limit=20');
+  $('#dl-count').textContent = rows.length;
+  const list = $('#dl-list');
+  list.innerHTML = '';
+  if (rows.length === 0) {
+    list.innerHTML = '<div class="empty">no dead-lettered jobs</div>';
+    return;
+  }
+  for (const r of rows) {
+    const div = document.createElement('div');
+    div.className = 'dl-row';
+    div.innerHTML = `
+      <div class="meta">
+        <div class="id">${r.job_id}</div>
+        <div class="type">${escapeHtml(r.task_type)} — ${r.attempts} attempt(s), moved ${fmtTime(r.moved_at)}</div>
+        <div class="err">${escapeHtml(r.last_error || r.reason)}</div>
+      </div>
+      <button data-requeue="${r.job_id}">Requeue</button>`;
+    list.appendChild(div);
+  }
+  list.querySelectorAll('[data-requeue]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      btn.disabled = true; btn.textContent = 'Requeuing…';
+      try { await api(`/v1/dead-letters/${btn.dataset.requeue}/requeue`, { method: 'POST' }); await refreshAll(); }
+      catch (err) { alert('Requeue failed: ' + err.message); btn.disabled = false; btn.textContent = 'Requeue'; }
+    });
+  });
+}
+
+function renderTypeOptions() {
+  const sel = $('#f-type');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">all task types</option>' +
+    [...state.taskTypes].sort().map(t => `<option value="${t}">${t}</option>`).join('');
+  sel.value = current;
+}
+
+function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+
+function renderRows() {
+  const idFilter = $('#f-id').value.trim().toLowerCase();
+  const rows = state.jobs.filter(j => !idFilter || j.id.toLowerCase().includes(idFilter));
+  const tbody = $('#job-rows');
+  tbody.innerHTML = '';
+  $('#empty-msg').style.display = rows.length ? 'none' : 'block';
+  for (const j of rows) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="status"><span class="st ${j.status}"><span class="dot"></span>${j.status}</span></td>
+      <td class="id">${shortId(j.id)}</td>
+      <td>${escapeHtml(j.task_type)}</td>
+      <td class="pri">${j.priority}</td>
+      <td class="pri">${j.attempts}/${j.max_retries}</td>
+      <td class="ts">${fmtTime(j.created_at)}</td>`;
+    tr.addEventListener('click', () => openDrawer(j.id));
+    tbody.appendChild(tr);
+  }
+}
+
+async function openDrawer(id) {
+  $('#veil').classList.add('open');
+  $('#drawer').classList.add('open');
+  $('#d-id').textContent = shortId(id);
+  $('#d-kv').innerHTML = '<div class="k">loading…</div>';
+  $('#d-attempts').innerHTML = '';
+  $('#d-logs').innerHTML = '';
+  $('#d-actions').innerHTML = '';
+  let job, logs = [];
+  try {
+    [job, logs] = await Promise.all([api(`/v1/jobs/${id}`), api(`/v1/jobs/${id}/logs?limit=200`)]);
+  } catch (e) {
+    $('#d-kv').innerHTML = `<div class="k">error</div><div class="v">${escapeHtml(e.message)}</div>`;
+    return;
+  }
+  $('#d-id').textContent = job.id;
+  $('#d-status').className = `st ${job.status}`;
+  $('#d-status').innerHTML = `<span class="dot"></span><span>${job.status}</span>`;
+  $('#d-kv').innerHTML = [
+    ['type', job.task_type], ['priority', job.priority], ['attempts', `${job.attempts}/${job.max_retries}`],
+    ['created', fmtTime(job.created_at)], ['started', fmtTime(job.started_at)], ['finished', fmtTime(job.finished_at)],
+    ['worker', job.worker_id || '—'], ['webhook', job.webhook_url || '—'],
+  ].map(([k,v]) => `<div class="k">${k}</div><div class="v">${escapeHtml(String(v))}</div>`).join('');
+  $('#d-result').textContent = job.last_error ? `error: ${job.last_error}` : JSON.stringify(job.result ?? job.payload, null, 2);
+  $('#d-attempts').innerHTML = (job.history || []).map(a => `
+      <div class="attempt-row">
+        <span>#${a.attempt} ${a.outcome}${a.duration_ms != null ? ' · ' + a.duration_ms + 'ms' : ''}</span>
+        <span class="a-worker">${escapeHtml(a.worker_id)}</span>
+      </div>`).join('') || '<div class="empty">no attempts yet</div>';
+  $('#d-logs').innerHTML = logs.length
+    ? logs.map(l => `<div class="line ${l.level}">${fmtTime(l.ts)}  ${escapeHtml(l.message)}</div>`).join('')
+    : '<div class="line">no log lines</div>';
+
+  const actions = $('#d-actions');
+  if (job.status === 'queued' || job.status === 'retrying') {
+    const btn = document.createElement('button');
+    btn.textContent = 'Cancel job';
+    btn.onclick = async () => { btn.disabled = true; try { await api(`/v1/jobs/${id}/cancel`, {method:'POST'}); closeDrawer(); await refreshAll(); } catch(e){ alert(e.message); btn.disabled=false; } };
+    actions.appendChild(btn);
+  }
+  if (job.status === 'dead') {
+    const btn = document.createElement('button');
+    btn.className = 'primary';
+    btn.textContent = 'Requeue';
+    btn.onclick = async () => { btn.disabled = true; try { await api(`/v1/dead-letters/${id}/requeue`, {method:'POST'}); closeDrawer(); await refreshAll(); } catch(e){ alert(e.message); btn.disabled=false; } };
+    actions.appendChild(btn);
+  }
+}
+
+function closeDrawer() { $('#veil').classList.remove('open'); $('#drawer').classList.remove('open'); }
+$('#veil').addEventListener('click', closeDrawer);
+$('#d-close').addEventListener('click', closeDrawer);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+
+$('#f-status').addEventListener('change', refreshJobs);
+$('#f-type').addEventListener('change', refreshJobs);
+$('#f-id').addEventListener('input', renderRows);
+
+async function refreshAll() {
+  try {
+    await Promise.all([refreshStats(), refreshJobs(), refreshDeadLetters()]);
+    setLive(true, 'live');
+  } catch (e) {
+    setLive(false, e.message.length > 60 ? 'connection error' : e.message);
+  }
+}
+refreshAll();
+setInterval(refreshAll, 2000);
+</script>
+</body>
+</html>

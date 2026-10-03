@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: taskforge_scheduler
+    static_configs:
+      - targets: ["scheduler:9464"]   # each scheduler replica must publish a distinct port/host in compose scaling
+
+  - job_name: taskforge_api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:8000"]

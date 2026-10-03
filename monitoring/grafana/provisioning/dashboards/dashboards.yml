@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: TaskForge
+    folder: TaskForge
+    type: file
+    options:
+      path: /etc/grafana/provisioning/dashboards/taskforge.json

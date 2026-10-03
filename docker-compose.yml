@@ -1,0 +1,157 @@
+# TaskForge — full stack. `docker compose up --build`
+#
+# Services: postgres (durable storage) -> api (FastAPI) -> scheduler (C++ engine,
+# scale with --scale scheduler=N) -> webhook-worker (independent delivery retries)
+# -> dashboard (static UI) -> prometheus + grafana (metrics).
+#
+# First run: `docker compose --profile seed run --rm seed` drops a sample image
+# into the shared data volume so the image_resize demo has something to resize.
+name: taskforge
+
+x-app-env: &app-env
+  TASKFORGE_DSN: "host=postgres dbname=taskforge user=taskforge password=${POSTGRES_PASSWORD:-taskforge}"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: taskforge
+      POSTGRES_USER: taskforge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-taskforge}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    ports:
+      - "15432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskforge -d taskforge"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: { context: ., dockerfile: api/Dockerfile }
+    environment:
+      <<: *app-env
+      TASKFORGE_API_KEYS: ${TASKFORGE_API_KEYS:-dev-key}
+      TASKFORGE_CORS_ORIGINS: "http://localhost:8080"
+      TASKFORGE_APPLY_SCHEMA: "1"   # idempotent: safe alongside the initdb schema mount above
+      TASKFORGE_WEBHOOK_ALLOW_PRIVATE: ${TASKFORGE_WEBHOOK_ALLOW_PRIVATE:-0}
+    depends_on:
+      postgres: { condition: service_healthy }
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/healthz', timeout=3)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  scheduler:
+    build: { context: ., dockerfile: cpp/Dockerfile }
+    environment:
+      <<: *app-env
+      TASKFORGE_CONCURRENCY: ${TASKFORGE_CONCURRENCY:-4}
+      TASKFORGE_BATCH: "50"
+      TASKFORGE_LEASE_SECONDS: "60"
+      TASKFORGE_POLL_MS: "100"
+      TASKFORGE_DATA_DIR: "/data"
+      TASKFORGE_METRICS_PORT: "9464"
+    depends_on:
+      api: { condition: service_healthy }   # api applies the schema; wait for it
+    volumes:
+      - taskforge_data:/data
+    ports:
+      - "9464:9464"   # Prometheus scrapes this; with --scale >1, only one replica's port is publishable
+
+  webhook-worker:
+    build: { context: ., dockerfile: api/Dockerfile }
+    command: ["python", "-m", "app.webhook_worker"]
+    environment:
+      <<: *app-env
+      TASKFORGE_WEBHOOK_SECRET: ${TASKFORGE_WEBHOOK_SECRET:-}
+      TASKFORGE_WEBHOOK_MAX_ATTEMPTS: "8"
+      TASKFORGE_WEBHOOK_ALLOW_PRIVATE: ${TASKFORGE_WEBHOOK_ALLOW_PRIVATE:-0}
+    depends_on:
+      api: { condition: service_healthy }
+
+  dashboard:
+    build: { context: ., dockerfile: dashboard/Dockerfile }
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - scheduler
+      - api
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"   # convenient for local demo only; disable in production
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+  # Optional: one-off job that drops a sample PNG into the shared /data/images
+  # directory so `image_resize` has something to work with out of the box.
+  # Run with: docker compose --profile seed run --rm seed
+  seed:
+    image: python:3.12-slim
+    profiles: ["seed"]
+    volumes:
+      - taskforge_data:/data
+    entrypoint: ["python", "-c"]
+    command:
+      - |
+        import struct, zlib, os
+        os.makedirs('/data/images', exist_ok=True)
+        w, h = 400, 300
+        def chunk(tag, data):
+            c = tag + data
+            return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c))
+        rows = []
+        for y in range(h):
+            row = bytearray(b'\x00')  # filter type 0 (none) for this scanline
+            for x in range(w):
+                row += bytes([x * 255 // w, y * 255 // h, 128])
+            rows.append(bytes(row))
+        raw = b''.join(rows)
+        ihdr = struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)
+        with open('/data/images/photo.png', 'wb') as f:
+            f.write(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', ihdr) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b''))
+        print('wrote /data/images/photo.png')
+
+  # Optional (Phase 8): real PyTorch document-classification worker.
+  # Run with: docker compose --profile ai up ai-worker
+  ai-worker:
+    build: { context: ., dockerfile: ai_worker/Dockerfile }
+    profiles: ["ai"]
+    environment:
+      <<: *app-env
+      TASKFORGE_AI_CONCURRENCY: "1"
+    depends_on:
+      api: { condition: service_healthy }
+    volumes:
+      # Shares the volume with the scheduler (images/output live under different
+      # subdirectories, so there's no path collision) so the trained model persists
+      # across container restarts instead of retraining from scratch every time.
+      - taskforge_data:/data
+
+volumes:
+  pgdata:
+  taskforge_data:
+  grafana_data:
